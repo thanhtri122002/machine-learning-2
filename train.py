@@ -37,7 +37,7 @@ class Preprocessing:
         return self.train_X ,  self.test_X
 
 class  SVM:
-    def __init__(self, kernel , gamma):
+    def __init__(self, kernel):
         self.kernel = kernel
   
 
@@ -64,6 +64,7 @@ if __name__ =="__main__":
     train_X, test_X = preprocessing.normalization()
     while True:
         print("1.SVM")
+        print("2.Random forest")
         choice = int(input("choose model to train"))
         if choice ==1:
             kernel = input('kernel linear or rbf: ')
