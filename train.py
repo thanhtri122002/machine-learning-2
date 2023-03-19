@@ -9,10 +9,12 @@ from keras.utils import to_categorical
 from keras.models import load_model, Model
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.layers import BatchNormalization, Concatenate, Conv2D, Dense, Dropout, Flatten, GlobalAveragePooling2D, Input, Lambda, ZeroPadding2D, MaxPooling2D
+from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
 from keras.datasets import mnist
 from sklearn.model_selection import GridSearchCV, ParameterGrid, cross_val_score
 import joblib
+from sklearn.tree import DecisionTreeClassifier
 HEIGHT = WIDTH = 28
 #loading the dataset
 (X_train, y_train), (test_X, test_y) = mnist.load_data()
@@ -45,6 +47,7 @@ class  SVM:
         svm_collection = []
         for params in ParameterGrid(svm_param_grid):
             svm = SVC(**params)
+            svm.fit(X_train,y_train)
             filename = f"svm_{params['C']}_{params['gamma']}_{params['kernel']}.joblib"
             #add name of each model into the list
             svm_collection.append(filename)
@@ -65,7 +68,7 @@ class Random_Forest:
         random_forest_collection = []
         for params in ParameterGrid(rf_param_grid):
             rf = RandomForestClassifier(**params)
-            
+            rf.fit(X_train,y_train)
             filename = f"rf_{params['n_estimators']}_{params['criterion']}.joblib"
             #add name of each model into the list
             random_forest_collection.append(filename)
@@ -96,35 +99,96 @@ class Random_Forest:
         return y_pred_list
 
 
+class KNN:
+    def train_model(self):
+        knn_param_grid = {'n_neighbors': [3, 5, 7], 'weights': [
+            'uniform', 'distance'], 'algorithm': ['auto', 'ball_tree', 'kd_tree', 'brute']}
+        knn_collection = []
+        for params in ParameterGrid(knn_param_grid):
+            knn = KNeighborsClassifier(**params)
+            knn.fit(X_train, y_train)
+            filename = f"knn_{params['n_neighbors']}_{params['weights']}_{params['algorithm']}.joblib"
+            #add name of each model into the list
+            knn_collection.append(filename)
+            joblib.dump(knn, filename)
+        return knn_collection
+
+    def predict_model(self, X_test):
+        knn_collection = self.train_model()
+        y_pred_list = []
+        for filename in knn_collection:
+            model = joblib.load(filename=filename)
+            y_pred = model.predict(X_test)
+            y_pred_list.append(y_pred)
+        return y_pred_list
+
+
+class DecisionTree:
+    def train_model(self):
+        dt_param_grid = {'max_depth': [3, 5, 7], 'criterion': [
+            'gini', 'entropy'], 'splitter': ['best', 'random']}
+        dt_collection = []
+        #iterate over parameter value combinations
+        for params in ParameterGrid(dt_param_grid):
+            dt = DecisionTreeClassifier(**params)
+            dt.fit(X_train, y_train)
+            filename = f"dt_{params['max_depth']}_{params['criterion']}_{params['splitter']}.joblib"
+            #add name of each model into the list
+            dt_collection.append(filename)
+            joblib.dump(dt, filename)
+        return dt_collection
+
+    def predict_model(self, X_test):
+        dt_collection = self.train_model()
+        y_pred_list = []
+        for filename in dt_collection:
+            model = joblib.load(filename=filename)
+            y_pred = model.predict(X_test)
+            y_pred_list.append(y_pred)
+        return y_pred_list
+
 class Evaluate:
     def __init__(self,pred_val,test_val,model):
         self.pred_val = pred_val
         self.test_val = test_val
-        self.model
+        self.model =model
     def plot_param(self):
         pass
         
     def confusion_matrix(self):
         cm = confusion_matrix(self.test_val,self.pred_val)
         pass
-    
 
-        
 if __name__ =="__main__":
     preprocessing = Preprocessing(X_train= X_train , test_X= test_X)
     X_train, test_X = preprocessing.normalization()
     while True:
         print("1.SVM")
         print("2.Random forest")
+        print("3.Decision tree")
+        print('4.KNN')
         choice = int(input("choose model to train"))
         if choice ==1:
             model = SVM()
             y_pred_vals = model.predict_model(X_test=test_X)
-            print(y_pred_vals)
+            print(accuracy_score(test_y,y_pred_vals))
         if choice == 2:
             model = Random_Forest()
             y_pred_vals = model.predict_model(X_test= test_X)
-            print(y_pred_vals)              
+            for y_pred in y_pred_vals:
+                print(accuracy_score(test_y,y_pred))
+        if choice == 3:
+            model = DecisionTree()
+            y_pred_vals = model.predict_model(X_test= test_X)
+            for y_pred in y_pred_vals:
+                print(accuracy_score(test_y,y_pred))
+        if choice == 4:
+            model = KNN()
+            y_pred_vals = model.predict_model(X_test=test_X)
+            for y_pred in y_pred_vals:
+                print(accuracy_score(test_y, y_pred))
+        else:
+            break
     
 
 """
