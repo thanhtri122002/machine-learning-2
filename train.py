@@ -11,70 +11,102 @@ from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.layers import BatchNormalization, Concatenate, Conv2D, Dense, Dropout, Flatten, GlobalAveragePooling2D, Input, Lambda, ZeroPadding2D, MaxPooling2D
 from sklearn.svm import SVC
 from keras.datasets import mnist
+from sklearn.model_selection import GridSearchCV
 import joblib
 HEIGHT = WIDTH = 28
 #loading the dataset
-(train_X, train_y), (test_X, test_y) = mnist.load_data()
+(X_train, y_train), (test_X, test_y) = mnist.load_data()
 
 #printing the shapes of the vectors 
 #X_train: (60000, 28, 28)
 #Y_train: (60000,)
 #X_test:  (10000, 28, 28)
 #Y_test:  (10000,)
-print(train_X)
-class Preprocessing:
-    def __init__(self, train_X , test_X):
-        self.train_X = train_X
-        self.test_X = test_X
 
+class Preprocessing:
+    def __init__(self, X_train , test_X):
+        self.X_train = X_train
+        self.test_X = test_X
     def normalization(self):
+        #reshape
+        self.X_train= self.X_train.reshape(self.X_train.shape[0], -1)
+        self.test_X = self.test_X.reshape(self.test_X.shape[0], -1)
         #convert the datatype
-        self.train_X = self.train_X.astype('float32')
+        self.X_train = self.X_train.astype('float32')
         self.test_X = self.test_X.astype('float32')
         #normalization into scale [0,1]
-        self.train_X /=255
+        self.X_train /=255
         self.test_X /= 255
-        return self.train_X ,  self.test_X
+        return self.X_train ,  self.test_X
 
 class  SVM:
     def __init__(self, kernel):
         self.kernel = kernel
-  
-
     def train_model(self):
-        svm = SVC(kernel = self.kernel )
-        svm.fit(train_X)
-        joblib.dump(svm, f"my_svm_{self.kernel}.joblib")
+        param_grid = {'C': [0.1, 1, 10], 'gamma': [1, 0.1, 0.01], 'kernel': ['rbf', 'linear']}
+        grid = GridSearchCV(SVC(), param_grid)
+        grid.fit(X_train, y_train)
+        print(grid.best_params_)
+        best_param = grid.best_params_
+        param_c = best_param['C']
+        param_gamma = best_param['gamma']
+        param_kernel = best_param['kernel']
+        svm = SVC(**grid.best_params_ )
+        svm.fit(X_train,y_train)
+        joblib.dump(svm, f"my_svm_{param_c}_{param_gamma}_{param_kernel}.joblib")
     def predict_model(self,X_test):
-        return self.train_model().predict(X_test)
+        y_pred = self.train_model().predict(X_test)
+        return y_pred
 
 class Random_Forest:
     def __init__(self,criterion):
         self.criterion= criterion
-    def define_model(self):
-        model = RandomForestClassifier(criterion= self.criterion)
-        model.fit(train_X)
-        joblib.dump(model, f"my_random_forest_{self.criterion}.joblib")
+    def train_model(self):
+        param_grid = {'n_estimators': [
+            10, 50, 100], 'criterion': ['gini', 'entropy']}
+        grid = GridSearchCV(RandomForestClassifier(), param_grid)
+        print(grid.best_params_)
+        grid.fit(X_train, y_train)
+        best_param = grid.best_params_
+        param_n_estimators = best_param['n_estimators']
+        param_criterion = best_param['criterion']
+        model = RandomForestClassifier(**grid.best_params_)
+        model.fit(X_train,y_train)
+        joblib.dump(model, f"my_random_forest_{param_n_estimators}_{param_criterion}.joblib")
     def predict_model(self,X_test):
-        return self.define_model().predict(X_test)
+        y_pred = self.train_model().predict(X_test)
+        return y_pred
+
+
+class Evaluate:
+    def __init__(self,pred_val,test_val,model):
+        self.pred_val = pred_val
+        self.test_val = test_val
+    def plot_param(self):
+        pass
+    def confusion_matrix(self):
+        cm = confusion_matrix(self.test_val,self.pred_val)
+        pass
     
-    
+
+        
 if __name__ =="__main__":
-    preprocessing = Preprocessing(train_X= train_X , test_X= test_X)
-    train_X, test_X = preprocessing.normalization()
+    preprocessing = Preprocessing(X_train= X_train , test_X= test_X)
+    X_train, test_X = preprocessing.normalization()
     while True:
         print("1.SVM")
         print("2.Random forest")
         choice = int(input("choose model to train"))
         if choice ==1:
-            kernel = input('kernel linear or rbf: ')
-            
-            model = SVM(kernel = kernel )
-            model.predict_model(test_X)     
+            model = SVM()
+            pred_val = model.predict_model(test_X) 
+            accuracy = accuracy_score(pred_val, test_y) 
+            print(accuracy)   
         if choice == 2:
-            criterion = input('choos the criterion gini or entropy: ')  
-            model = Random_Forest(criterion= criterion)
-            model.predict_model(test_X)
+            model = Random_Forest()
+            pred_val = model.predict_model(test_X)
+            accuracy = accuracy_score(pred_val, test_y)  
+            print(accuracy)
                                     
     
 
