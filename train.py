@@ -11,7 +11,7 @@ from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.layers import BatchNormalization, Concatenate, Conv2D, Dense, Dropout, Flatten, GlobalAveragePooling2D, Input, Lambda, ZeroPadding2D, MaxPooling2D
 from sklearn.svm import SVC
 from keras.datasets import mnist
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import GridSearchCV, ParameterGrid, cross_val_score
 import joblib
 HEIGHT = WIDTH = 28
 #loading the dataset
@@ -40,29 +40,42 @@ class Preprocessing:
         return self.X_train ,  self.test_X
 
 class  SVM:
-    def __init__(self, kernel):
-        self.kernel = kernel
     def train_model(self):
-        param_grid = {'C': [0.1, 1, 10], 'gamma': [1, 0.1, 0.01], 'kernel': ['rbf', 'linear']}
-        grid = GridSearchCV(SVC(), param_grid)
-        grid.fit(X_train, y_train)
-        print(grid.best_params_)
-        best_param = grid.best_params_
-        param_c = best_param['C']
-        param_gamma = best_param['gamma']
-        param_kernel = best_param['kernel']
-        svm = SVC(**grid.best_params_ )
-        svm.fit(X_train,y_train)
-        joblib.dump(svm, f"my_svm_{param_c}_{param_gamma}_{param_kernel}.joblib")
+        svm_param_grid = {'C': [1, 10], 'gamma': [1,0.01], 'kernel': ['rbf', 'linear']}
+        svm_collection = []
+        for params in ParameterGrid(svm_param_grid):
+            svm = SVC(**params)
+            filename = f"svm_{params['C']}_{params['gamma']}_{params['kernel']}.joblib"
+            #add name of each model into the list
+            svm_collection.append(filename)
+            joblib.dump(svm,filename)
+        return svm_collection
     def predict_model(self,X_test):
-        y_pred = self.train_model().predict(X_test)
-        return y_pred
+        svm_collection = self.train_model()
+        y_pred_list = []
+        for filename in svm_collection:
+            model= joblib.load(filename= filename)
+            y_pred = model.predict(X_test)
+            y_pred_list.append(y_pred)
+        return y_pred_list
 
 class Random_Forest:
-    def __init__(self,criterion):
-        self.criterion= criterion
     def train_model(self):
-        param_grid = {'n_estimators': [
+        rf_param_grid = {'n_estimators': [10, 50], 'criterion': ['gini', 'entropy']}
+        random_forest_collection = []
+        for params in ParameterGrid(rf_param_grid):
+            rf = RandomForestClassifier(**params)
+            
+            filename = f"rf_{params['n_estimators']}_{params['criterion']}.joblib"
+            #add name of each model into the list
+            random_forest_collection.append(filename)
+            # Save model to file
+            joblib.dump(rf,filename)
+        return random_forest_collection
+           
+
+        
+        """param_grid = {'n_estimators': [
             10, 50, 100], 'criterion': ['gini', 'entropy']}
         grid = GridSearchCV(RandomForestClassifier(), param_grid)
         print(grid.best_params_)
@@ -72,18 +85,25 @@ class Random_Forest:
         param_criterion = best_param['criterion']
         model = RandomForestClassifier(**grid.best_params_)
         model.fit(X_train,y_train)
-        joblib.dump(model, f"my_random_forest_{param_n_estimators}_{param_criterion}.joblib")
+        joblib.dump(model, f"my_random_forest_{param_n_estimators}_{param_criterion}.joblib")"""
     def predict_model(self,X_test):
-        y_pred = self.train_model().predict(X_test)
-        return y_pred
+        random_forest_collection = self.train_model()
+        y_pred_list = []
+        for filename in random_forest_collection:
+            model= joblib.load(filename= filename)
+            y_pred = model.predict(X_test)
+            y_pred_list.append(y_pred)
+        return y_pred_list
 
 
 class Evaluate:
     def __init__(self,pred_val,test_val,model):
         self.pred_val = pred_val
         self.test_val = test_val
+        self.model
     def plot_param(self):
         pass
+        
     def confusion_matrix(self):
         cm = confusion_matrix(self.test_val,self.pred_val)
         pass
@@ -99,15 +119,54 @@ if __name__ =="__main__":
         choice = int(input("choose model to train"))
         if choice ==1:
             model = SVM()
-            pred_val = model.predict_model(test_X) 
-            accuracy = accuracy_score(pred_val, test_y) 
-            print(accuracy)   
+            y_pred_vals = model.predict_model(X_test=test_X)
+            print(y_pred_vals)
         if choice == 2:
             model = Random_Forest()
-            pred_val = model.predict_model(test_X)
-            accuracy = accuracy_score(pred_val, test_y)  
-            print(accuracy)
-                                    
+            y_pred_vals = model.predict_model(X_test= test_X)
+            print(y_pred_vals)              
     
 
-    
+"""
+from sklearn.model_selection import cross_val_score
+import matplotlib.pyplot as plt
+
+# SVM
+svm_param_grid = {'C': [0.1, 1, 10], 'gamma': [1, 0.1, 0.01], 'kernel': ['rbf', 'linear']}
+svm_scores = []
+
+for params in ParameterGrid(svm_param_grid):
+    svm = SVC(**params)
+    scores = cross_val_score(svm, X_train,y_train,cv=5)
+    svm_scores.append(scores.mean())
+
+plt.plot(svm_scores,label='SVM')
+
+# Random Forest
+rf_param_grid = {'n_estimators': [10, 50, 100], 'criterion': ['gini', 'entropy']}
+rf_scores = []
+
+for params in ParameterGrid(rf_param_grid):
+    rf = RandomForestClassifier(**params)
+    scores = cross_val_score(rf,X_train,y_train,cv=5)
+    rf_scores.append(scores.mean())
+
+plt.plot(rf_scores,label='Random Forest')
+
+plt.xlabel('Parameter Set')
+plt.ylabel('Cross-Validated Accuracy')
+plt.legend()
+plt.show()
+
+param_grid = {'C': [0.1, 1, 10], 'gamma': [1, 0.1, 0.01], 'kernel': ['rbf', 'linear']}
+        grid = GridSearchCV(SVC(), param_grid)
+        grid.fit(X_train, y_train)
+        print(grid.best_params_)
+        best_param = grid.best_params_
+        param_c = best_param['C']
+        param_gamma = best_param['gamma']
+        param_kernel = best_param['kernel']
+        svm = SVC(**grid.best_params_ )
+        svm.fit(X_train,y_train)
+        joblib.dump(svm, f"my_svm_{param_c}_{param_gamma}_{param_kernel}.joblib")
+"""
