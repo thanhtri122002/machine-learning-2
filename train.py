@@ -3,6 +3,7 @@ import pandas as pd
 import cv2
 import matplotlib.pyplot as plt
 import seaborn as sns
+import os
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import confusion_matrix, f1_score, recall_score, precision_score, accuracy_score
 from keras.utils import to_categorical
@@ -12,184 +13,235 @@ from keras.layers import BatchNormalization, Concatenate, Conv2D, Dense, Dropout
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
 from keras.datasets import mnist
-from sklearn.model_selection import GridSearchCV, ParameterGrid, cross_val_score
+from sklearn.model_selection import GridSearchCV, ParameterGrid, cross_val_score, train_test_split
 import joblib
 from sklearn.tree import DecisionTreeClassifier
 HEIGHT = WIDTH = 28
 #loading the dataset
-(X_train, y_train), (test_X, test_y) = mnist.load_data()
 
-#printing the shapes of the vectors 
-#X_train: (60000, 28, 28)
+(x_train, y_train), (x_test, y_test) = mnist.load_data()
+x = np.concatenate((x_train, x_test))
+y = np.concatenate((y_train, y_test))
+
+train_size = 20000 / len(x)
+test_size = 5000 / len(x)
+x_train, x_test, y_train, y_test = train_test_split(x, y, train_size=train_size,
+                                                    test_size=test_size,
+                                                    random_state=2023)
+#printing the shapes of the vectors
+#x_train: (60000, 28, 28)
 #Y_train: (60000,)
-#X_test:  (10000, 28, 28)
+#x_test:  (10000, 28, 28)
 #Y_test:  (10000,)
 
+
 class Preprocessing:
-    def __init__(self, X_train , test_X):
-        self.X_train = X_train
-        self.test_X = test_X
+    def __init__(self, x_train, x_test):
+        self.x_train = x_train
+        self.x_test = x_test
     def normalization(self):
         #reshape
-        self.X_train= self.X_train.reshape(self.X_train.shape[0], -1)
-        self.test_X = self.test_X.reshape(self.test_X.shape[0], -1)
+        self.x_train = self.x_train.reshape(self.x_train.shape[0], -1)
+        self.x_test = self.x_test.reshape(self.x_test.shape[0], -1)
         #convert the datatype
-        self.X_train = self.X_train.astype('float32')
-        self.test_X = self.test_X.astype('float32')
+        self.x_train = self.x_train.astype('float32')
+        self.x_test = self.x_test.astype('float32')
         #normalization into scale [0,1]
-        self.X_train /=255
-        self.test_X /= 255
-        return self.X_train ,  self.test_X
+        self.x_train /= 255
+        self.x_test /= 255
+        return self.x_train,  self.x_test
 
-class  SVM:
+
+class SVM:
+    def __init__(self):
+        self.svc = SVC()
+        self.gscv = None
+
     def train_model(self):
-        svm_param_grid = {'C': [1, 10], 'gamma': [1,0.01], 'kernel': ['rbf', 'linear']}
-        svm_collection = []
-        for params in ParameterGrid(svm_param_grid):
-            svm = SVC(**params)
-            svm.fit(X_train,y_train)
-            filename = f"svm_{params['C']}_{params['gamma']}_{params['kernel']}.joblib"
-            #add name of each model into the list
-            svm_collection.append(filename)
-            joblib.dump(svm,filename)
-        return svm_collection
-    def predict_model(self,X_test):
-        svm_collection = self.train_model()
-        y_pred_list = []
-        for filename in svm_collection:
-            model= joblib.load(filename= filename)
-            y_pred = model.predict(X_test)
-            y_pred_list.append(y_pred)
-        return y_pred_list
+        params_grid = [{'kernel': ['rbf', 'poly', 'sigmoid'],
+                        'C': [0.001, 0.01, 0.1, 1, 10, 100],
+                        'gamma': [0.0001, 0.001, 0.01, 0.1]},
+                       {'kernel': ['linear'],
+                        'C': [0.001, 0.01, 0.1, 1],
+                        'gamma': [0.0001, 0.001]}]
+        #find the best parameter for training set
+        self.gscv = GridSearchCV(self.svc, param_grid=params_grid)
+        self.gscv.fit(x_train, y_train)
+        params = self.get_best_params()
+        # create a file name based on the model and parameters
+        filename = f"SVM_{params['kernel']}_{params['C']}_{params['gamma']}.joblib"
+        # save the model to file
+        joblib.dump(self.gscv, filename)
+
+    def predict_model(self, x_test):
+        y_pred = self.train_model().predict(x_test)
+        #return the predicted labels
+        return y_pred
+
+    def get_best_params(self):
+        #return the best parameters found by GridSearchCV
+        return self.gscv.best_params_
+
+    def get_best_score(self):
+        return self.gscv.best_score_
+
 
 class Random_Forest:
-    def train_model(self):
-        rf_param_grid = {'n_estimators': [10, 50], 'criterion': ['gini', 'entropy']}
-        random_forest_collection = []
-        for params in ParameterGrid(rf_param_grid):
-            rf = RandomForestClassifier(**params)
-            rf.fit(X_train,y_train)
-            filename = f"rf_{params['n_estimators']}_{params['criterion']}.joblib"
-            #add name of each model into the list
-            random_forest_collection.append(filename)
-            # Save model to file
-            joblib.dump(rf,filename)
-        return random_forest_collection
-           
+    def __init__(self) -> None:
+        self.rf = RandomForestClassifier()
+        self.gscv = None
 
-        
-        """param_grid = {'n_estimators': [
-            10, 50, 100], 'criterion': ['gini', 'entropy']}
-        grid = GridSearchCV(RandomForestClassifier(), param_grid)
-        print(grid.best_params_)
-        grid.fit(X_train, y_train)
-        best_param = grid.best_params_
-        param_n_estimators = best_param['n_estimators']
-        param_criterion = best_param['criterion']
-        model = RandomForestClassifier(**grid.best_params_)
-        model.fit(X_train,y_train)
-        joblib.dump(model, f"my_random_forest_{param_n_estimators}_{param_criterion}.joblib")"""
-    def predict_model(self,X_test):
-        random_forest_collection = self.train_model()
-        y_pred_list = []
-        for filename in random_forest_collection:
-            model= joblib.load(filename= filename)
-            y_pred = model.predict(X_test)
-            y_pred_list.append(y_pred)
-        return y_pred_list
+    def train_model(self):
+
+        #define a grid of parameters to search over
+        params_grid = [{'n_estimators': [10, 50, 100, 200],
+                        'max_depth': [None, 5, 10, 20],
+                        'min_samples_split': [2, 5, 10],
+                        'min_samples_leaf': [1, 2, 4],
+                        'criterion': ['gini', 'entropy', 'log_loss']}]
+        #find the best parameter for training set using grid search and cross-validation
+        #specify the number of folds (e.g. 5) in the cv parameter
+        self.gscv = GridSearchCV(self.rf, param_grid=params_grid)
+        self.gscv.fit(x_train, y_train)
+        params = self.get_best_params()
+
+        #create a file name based on the model and parameters
+        filename = f"RandomForest_{params['n_estimators']}_{params['max_depth']}_{params['min_samples_split']}_{params['min_samples_leaf']}.joblib"
+        #save the model to file
+        joblib.dump(self.gscv, filename)
+
+    def predict_model(self, x_test):
+        y_pred = self.train_model().predict(x_test)
+        #return the predicted labels
+        return y_pred
+
+    def get_best_params(self):
+        #return the best parameters found by GridSearchCV
+        return self.gscv.best_params_
+
+    def get_best_score(self):
+        return self.gscv.best_score_
 
 
 class KNN:
+    def __init__(self):
+        self.knn = KNeighborsClassifier()
+        self.gscv = None
     def train_model(self):
-        knn_param_grid = {'n_neighbors': [3, 5, 7], 'weights': [
-            'uniform', 'distance'], 'algorithm': ['auto', 'ball_tree', 'kd_tree', 'brute']}
-        knn_collection = []
-        for params in ParameterGrid(knn_param_grid):
-            knn = KNeighborsClassifier(**params)
-            knn.fit(X_train, y_train)
-            filename = f"knn_{params['n_neighbors']}_{params['weights']}_{params['algorithm']}.joblib"
-            #add name of each model into the list
-            knn_collection.append(filename)
-            joblib.dump(knn, filename)
-        return knn_collection
+        params_grid = params_grid = [{'n_neighbors': [3, 5, 7, 9, 11, 13],
+                                      'weights': ['uniform', 'distance'],
+                                      'metric': ['euclidean', 'manhattan', 'minkowski']}]
+        self.gscv = GridSearchCV(self.knn, param_grid=params_grid)
+        self.gscv.fit(x_train, y_train)
+        params = self.get_best_params()
+        #create a file name based on the model and parameters
+        filename = f"KNN_{params['n_neighbors']}_{params['weights']}_{params['metric']}.joblib"
+        #save the model to file
+        joblib.dump(self.gscv, filename)
 
-    def predict_model(self, X_test):
-        knn_collection = self.train_model()
-        y_pred_list = []
-        for filename in knn_collection:
-            model = joblib.load(filename=filename)
-            y_pred = model.predict(X_test)
-            y_pred_list.append(y_pred)
-        return y_pred_list
+    def predict_model(self, x_test):
+        y_pred = self.train_model().predict(x_test)
+        return y_pred
+
+    def get_best_params(self):
+        return self.gscv.best_params_
+
+    def get_best_score(self):
+        return self.gscv.best_score_
 
 
 class DecisionTree:
-    def train_model(self):
-        dt_param_grid = {'max_depth': [3, 5, 7], 'criterion': [
-            'gini', 'entropy'], 'splitter': ['best', 'random']}
-        dt_collection = []
-        #iterate over parameter value combinations
-        for params in ParameterGrid(dt_param_grid):
-            dt = DecisionTreeClassifier(**params)
-            dt.fit(X_train, y_train)
-            filename = f"dt_{params['max_depth']}_{params['criterion']}_{params['splitter']}.joblib"
-            #add name of each model into the list
-            dt_collection.append(filename)
-            joblib.dump(dt, filename)
-        return dt_collection
+    def __init__(self) -> None:
+        self.dt = DecisionTreeClassifier()
+        self.gscv = None
 
-    def predict_model(self, X_test):
-        dt_collection = self.train_model()
-        y_pred_list = []
-        for filename in dt_collection:
-            model = joblib.load(filename=filename)
-            y_pred = model.predict(X_test)
-            y_pred_list.append(y_pred)
-        return y_pred_list
+    def train_model(self):
+        params_grid = {
+            'criterion': ['gini', 'entropy'],
+            'max_depth': [4, 5, 6, 7, 8, 9, 10],
+            'splitter': ['best', 'random'],
+            'min_samples_split': [2, 3, 4]
+        }
+        self.gscv = GridSearchCV(
+            estimator=self.dt, param_grid=params_grid)
+
+        self.gscv.fit(x_train, y_train)
+        params = self.get_best_params()
+        #create a file name based on the model and parameters
+        filename = f"DTree_{params['criterion']}_{params['splitter']}_{params['max_depth']}.joblib"
+        #save the model to file
+        joblib.dump(self.gscv, filename)
+
+    def predict_model(self, x_test):
+        y_pred = self.train_model().predict(x_test)
+        return y_pred
+
+    def get_best_params(self):
+        return self.gscv.best_params_
+
+    def get_best_score(self):
+        return self.gscv.best_score_
+
 
 class Evaluate:
-    def __init__(self,pred_val,test_val,model):
-        self.pred_val = pred_val
+    def __init__(self, test_val, model):
         self.test_val = test_val
-        self.model =model
-    def plot_param(self):
-        pass
-        
-    def confusion_matrix(self):
-        cm = confusion_matrix(self.test_val,self.pred_val)
-        pass
+        self.model = model
+    def load_models(self):
+        folder = "models" #the folder where the models are saved
+        for file in os.listdir(folder): #iterate over the files in the folder
+            if file.endswith(".joblib"): #check if the file is a joblib file
+                model_name = file.split(".")[0] #get the model name from the file name
+                model_path = os.path.join(folder, file) #get the full path of the file
+                model = joblib.load(model_path) #load the model from the file
+                self.models[model_name] = model #store the model in the dictionary
 
-if __name__ =="__main__":
-    preprocessing = Preprocessing(X_train= X_train , test_X= test_X)
-    X_train, test_X = preprocessing.normalization()
+    def predict_models(self, x_test):
+        for model_name, model in self.models.items(): #iterate over the models in the dictionary
+            y_pred = model.predict(x_test) #predict using the model on x_test
+            self.predictions[model_name] = y_pred #store the predictions in the dictionary
+            return self.predictions
+
+    def plot_confusion_matrix(self):
+        fig, axes = plt.subplots(nrows=len(self.models), ncols=1, figsize=(10, 10)) #create a figure with subplots for each model
+        fig.suptitle("Confusion matrices for different models") #set a title for the figure
+        
+        for i, (model_name, y_pred) in enumerate(self.predictions.items()): #iterate over the predictions in the dictionary
+            
+            cm = confusion_matrix(self.test_val, y_pred) #compute confusion matrix using true and predicted labels
+            
+            axes[i].imshow(cm, cmap="Blues") #plot confusion matrix as an image on subplot i
+            
+            axes[i].set_title(model_name)
+if __name__ == "__main__":
+    preprocessing = Preprocessing(x_train=x_train, x_test=x_test)
+    x_train, x_test = preprocessing.normalization()
+    y_preds = {}
     while True:
-        print("1.SVM")
-        print("2.Random forest")
-        print("3.Decision tree")
-        print('4.KNN')
-        choice = int(input("choose model to train"))
-        if choice ==1:
-            model = SVM()
-            y_pred_vals = model.predict_model(X_test=test_X)
-            print(accuracy_score(test_y,y_pred_vals))
+        print("1.Train and save models")
+        choice = int(input("choose your choice: "))
+        if choice == 1:
+            model_svm = SVM()
+            y_pred_svm = model_svm.predict_model(x_test=x_test)
+            y_preds['svm'] = y_pred_svm
+
+            model_rf = Random_Forest()
+            y_pred_rf = model_rf.predict_model(x_test=x_test)
+            y_preds['random-forest'] = y_pred_rf
+
+            model_dt = DecisionTree()
+            y_pred_dt = model_dt.predict_model(x_test=x_test)
+            y_preds['decision-tree'] = y_pred_dt
+
+            model_knn = KNN()
+            y_pred_knn = model_knn.predict_model(x_test=x_test)
+            y_preds['knn'] = y_pred_knn
+            print(y_preds)
         if choice == 2:
-            model = Random_Forest()
-            y_pred_vals = model.predict_model(X_test= test_X)
-            for y_pred in y_pred_vals:
-                print(accuracy_score(test_y,y_pred))
-        if choice == 3:
-            model = DecisionTree()
-            y_pred_vals = model.predict_model(X_test= test_X)
-            for y_pred in y_pred_vals:
-                print(accuracy_score(test_y,y_pred))
-        if choice == 4:
-            model = KNN()
-            y_pred_vals = model.predict_model(X_test=test_X)
-            for y_pred in y_pred_vals:
-                print(accuracy_score(test_y, y_pred))
+            pass
         else:
             break
-    
+
 
 """
 from sklearn.model_selection import cross_val_score
@@ -201,7 +253,7 @@ svm_scores = []
 
 for params in ParameterGrid(svm_param_grid):
     svm = SVC(**params)
-    scores = cross_val_score(svm, X_train,y_train,cv=5)
+    scores = cross_val_score(svm, x_train,y_train,cv=5)
     svm_scores.append(scores.mean())
 
 plt.plot(svm_scores,label='SVM')
@@ -212,7 +264,7 @@ rf_scores = []
 
 for params in ParameterGrid(rf_param_grid):
     rf = RandomForestClassifier(**params)
-    scores = cross_val_score(rf,X_train,y_train,cv=5)
+    scores = cross_val_score(rf,x_train,y_train,cv=5)
     rf_scores.append(scores.mean())
 
 plt.plot(rf_scores,label='Random Forest')
@@ -224,13 +276,47 @@ plt.show()
 
 param_grid = {'C': [0.1, 1, 10], 'gamma': [1, 0.1, 0.01], 'kernel': ['rbf', 'linear']}
         grid = GridSearchCV(SVC(), param_grid)
-        grid.fit(X_train, y_train)
+        grid.fit(x_train, y_train)
         print(grid.best_params_)
         best_param = grid.best_params_
         param_c = best_param['C']
         param_gamma = best_param['gamma']
         param_kernel = best_param['kernel']
         svm = SVC(**grid.best_params_ )
-        svm.fit(X_train,y_train)
+        svm.fit(x_train,y_train)
         joblib.dump(svm, f"my_svm_{param_c}_{param_gamma}_{param_kernel}.joblib")
+
+
+        svm_param_grid = {'C': [1, 10], 'gamma': [1,0.01]}
+        kernel = ['rbf', 'linear']
+        svm_collection = []
+        for params in ParameterGrid(svm_param_grid):
+            svm = SVC(**params)
+            svm.fit(x_train,y_train)
+            filename = f"svm_{params['C']}_{params['gamma']}_{params['kernel']}.joblib"
+            #add name of each model into the list
+            svm_collection.append(filename)
+            joblib.dump(svm,filename)
+        return svm_collection
+
+        svm_collection = self.train_model()
+        y_pred_list = []
+        for filename in svm_collection:
+            model= joblib.load(filename= filename)
+            y_pred = model.predict(x_test)
+            y_pred_list.append(y_pred)
+        return y_pred_list
+
+
+        param_grid = {'n_estimators': [
+            10, 50, 100], 'criterion': ['gini', 'entropy']}
+        grid = GridSearchCV(RandomForestClassifier(), param_grid)
+        print(grid.best_params_)
+        grid.fit(x_train, y_train)
+        best_param = grid.best_params_
+        param_n_estimators = best_param['n_estimators']
+        param_criterion = best_param['criterion']
+        model = RandomForestClassifier(**grid.best_params_)
+        model.fit(x_train,y_train)
+        joblib.dump(model, f"my_random_forest_{param_n_estimators}_{param_criterion}.joblib")
 """
