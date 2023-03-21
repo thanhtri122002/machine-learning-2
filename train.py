@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import confusion_matrix, f1_score, recall_score, precision_score, accuracy_score
+from sklearn.metrics import classification_report, confusion_matrix, f1_score, plot_confusion_matrix, recall_score, precision_score, accuracy_score
 from keras.utils import to_categorical
 from keras.models import load_model, Model
 from keras.callbacks import EarlyStopping, ModelCheckpoint
@@ -71,12 +71,7 @@ class SVM:
         # create a file name based on the model and parameters
         filename = f"SVM_{params['kernel']}_{params['C']}_{params['gamma']}.joblib"
         # save the model to file
-        joblib.dump(self.gscv, filename)
-
-    def predict_model(self, x_test):
-        y_pred = self.train_model().predict(x_test)
-        #return the predicted labels
-        return y_pred
+        joblib.dump(self.gscv.best_estimator_, filename)
 
     def get_best_params(self):
         #return the best parameters found by GridSearchCV
@@ -108,12 +103,7 @@ class Random_Forest:
         #create a file name based on the model and parameters
         filename = f"RandomForest_{params['n_estimators']}_{params['max_depth']}_{params['min_samples_split']}_{params['min_samples_leaf']}.joblib"
         #save the model to file
-        joblib.dump(self.gscv, filename)
-
-    def predict_model(self, x_test):
-        y_pred = self.train_model().predict(x_test)
-        #return the predicted labels
-        return y_pred
+        joblib.dump(self.gscv.best_estimator_, filename)
 
     def get_best_params(self):
         #return the best parameters found by GridSearchCV
@@ -127,6 +117,7 @@ class KNN:
     def __init__(self):
         self.knn = KNeighborsClassifier()
         self.gscv = None
+
     def train_model(self):
         params_grid = params_grid = [{'n_neighbors': [3, 5, 7, 9, 11, 13],
                                       'weights': ['uniform', 'distance'],
@@ -137,18 +128,13 @@ class KNN:
         #create a file name based on the model and parameters
         filename = f"KNN_{params['n_neighbors']}_{params['weights']}_{params['metric']}.joblib"
         #save the model to file
-        joblib.dump(self.gscv, filename)
-
-    def predict_model(self, x_test):
-        y_pred = self.train_model().predict(x_test)
-        return y_pred
+        joblib.dump(self.gscv.best_estimator_, filename)
 
     def get_best_params(self):
         return self.gscv.best_params_
 
     def get_best_score(self):
         return self.gscv.best_score_
-
 
 class DecisionTree:
     def __init__(self) -> None:
@@ -170,20 +156,63 @@ class DecisionTree:
         #create a file name based on the model and parameters
         filename = f"DTree_{params['criterion']}_{params['splitter']}_{params['max_depth']}.joblib"
         #save the model to file
-        joblib.dump(self.gscv, filename)
-
-    def predict_model(self, x_test):
-        y_pred = self.train_model().predict(x_test)
-        return y_pred
+        joblib.dump(self.gscv.best_estimator_, filename)
 
     def get_best_params(self):
         return self.gscv.best_params_
 
     def get_best_score(self):
         return self.gscv.best_score_
-
+    
 
 class Evaluate:
+    def __init__(self, test_val, model):
+        self.test_val = test_val  # true labels
+        self.model = model  # model name
+        self.models = {}  # dictionary to store models
+        self.predictions = {}  # dictionary to store predictions
+
+    def load_models(self):
+        """Load models from a folder and store them in a dictionary"""
+        folder = "models"  # the folder where the models are saved
+        for file in os.listdir(folder):  # iterate over the files in the folder
+            if file.endswith(".joblib"):  # check if the file is a joblib file
+                # get the model name from the file name
+                model_name = file.split(".")[0]
+                # get the full path of the file
+                model_path = os.path.join(folder, file)
+                model = joblib.load(model_path)  # load the model from the file
+                # store the model in the dictionary
+                self.models[model_name] = model
+
+    def predict_models(self, x_test):
+        """Predict on x_test using different models and store them in a dictionary"""
+        for model_name, model in self.models.items():  # iterate over the models in the dictionary
+            y_pred = model.predict(x_test)  # predict using the model on x_test
+            self.predictions[model_name] = y_pred  # store the predictions 
+
+    def plot_confusion_matrix(self):
+        """Plot confusion matrices for different models"""
+        fig, axes = plt.subplots(nrows=len(self.models), ncols=1, figsize=(
+            10, 10))  # create a figure with subplots for each model
+        # set a title for the figure
+        fig.suptitle("Confusion matrices for different models")
+
+        # iterate over the predictions in the dictionary
+        for i, (model_name, y_pred) in enumerate(self.predictions.items()):
+
+            plot_confusion_matrix(model=self.models[model_name], X=x_test, y_true=self.test_val,
+                                  ax=axes[i], cmap="Blues", values_format="d")  # plot confusion matrix using sklearn function on subplot i
+
+            axes[i].set_title(model_name)  # set a title for subplot i
+
+            # generate a classification report
+            report = classification_report(y_true=self.test_val, y_pred=y_pred)
+            print(f"Classification report for {model_name}:")
+            print(report)  # print the report
+
+
+"""class Evaluate:
     def __init__(self, test_val, model):
         self.test_val = test_val
         self.model = model
@@ -212,7 +241,7 @@ class Evaluate:
             
             axes[i].imshow(cm, cmap="Blues") #plot confusion matrix as an image on subplot i
             
-            axes[i].set_title(model_name)
+            axes[i].set_title(model_name)"""
 if __name__ == "__main__":
     preprocessing = Preprocessing(x_train=x_train, x_test=x_test)
     x_train, x_test = preprocessing.normalization()
@@ -221,22 +250,49 @@ if __name__ == "__main__":
         print("1.Train and save models")
         choice = int(input("choose your choice: "))
         if choice == 1:
-            model_svm = SVM()
-            y_pred_svm = model_svm.predict_model(x_test=x_test)
-            y_preds['svm'] = y_pred_svm
-
             model_rf = Random_Forest()
-            y_pred_rf = model_rf.predict_model(x_test=x_test)
+            model_rf.train_model()
+            # load the best model from the file
+            filename_rf = f"RandomForest_{model_rf.get_best_params()['n_estimators']}_{model_rf.get_best_params()['max_depth']}_{model_rf.get_best_params()['min_samples_split']}_{model_rf.get_best_params()['min_samples_leaf']}.joblib"
+            trained_rf = joblib.load(filename_rf) 
+            # predict on the test data using the best model
+            y_pred_rf = trained_rf.predict(x_test)
             y_preds['random-forest'] = y_pred_rf
 
+            model_knn = KNN()
+            # train the model using GridSearchCV and save it to a file
+            model_knn.train_model()
+            # load the best model from the file
+            filename_knn = f"KNN_{model_knn.get_best_params()['n_neighbors']}_{model_knn.get_best_params()['weights']}_{model_knn.get_best_params()['metric']}.joblib"
+            trained_knn = joblib.load(filename_knn) 
+            # predict on the test data using the best model
+            y_pred_knn = trained_knn.predict(x_test)
+            y_preds['k-nearest-neighbors'] = y_pred_knn
+
             model_dt = DecisionTree()
-            y_pred_dt = model_dt.predict_model(x_test=x_test)
+            # train the model using GridSearchCV and save it to a file
+            model_dt.train_model()
+            # load the best model from the file
+            filename_dt = f"DTree_{model_dt.get_best_params()['criterion']}_{model_dt.get_best_params()['splitter']}_{model_dt.get_best_params()['max_depth']}.joblib"
+            trained_dt = joblib.load(filename_dt) 
+            # predict on the test data using the best model
+            y_pred_dt = trained_dt.predict(x_test)
             y_preds['decision-tree'] = y_pred_dt
 
-            model_knn = KNN()
-            y_pred_knn = model_knn.predict_model(x_test=x_test)
-            y_preds['knn'] = y_pred_knn
-            print(y_preds)
+            model_svm = SVM()
+            # train the model using GridSearchCV and save it to a file
+            model_svm.train_model()
+            filename_svm = f"SVM_{model_svm.get_best_params()['kernel']}_{model_svm.get_best_params()['C']}_{model_svm.get_best_params()['gamma']}.joblib"
+            trained_svm = joblib.load(filename_svm) 
+            # predict on the test data using the best model
+            y_pred_svm = trained_svm.predict(x_test)
+            y_preds['svm'] = y_pred_svm
+
+            
+
+            
+
+
         if choice == 2:
             pass
         else:

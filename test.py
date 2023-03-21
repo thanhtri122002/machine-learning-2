@@ -1,53 +1,39 @@
-class Evaluate:
-    def __init__(self,pred_val,test_val,model):
-        self.pred_val = pred_val
-        self.test_val = test_val
-        self.model = model
-    def plot_param(self):
-        if isinstance(self.model, Random_Forest):
-            param_names = ['n_estimators', 'criterion']
-            param_ranges = [[10, 50, 100], ['gini', 'entropy']]
-        elif isinstance(self.model, SVM):
-            param_names = ['C', 'gamma', 'kernel']
-            param_ranges = [[0.1, 1, 10], [1, 0.1, 0.01], ['rbf', 'linear']]
-        else:
-            raise ValueError('Invalid model type')
-        
-        for i in range(len(param_names)):
-            param_name = param_names[i]
-            param_range = param_ranges[i]
-            
-            train_scores = []
-            test_scores = []
+class SVM:
+    def __init__(self):
+        self.svc = SVC()
+        self.gscv = None
 
-            for param_value in param_range:
-                if isinstance(self.model, Random_Forest):
-                    if param_name == 'n_estimators':
-                        model = RandomForestClassifier(n_estimators=param_value)
-                    elif param_name == 'criterion':
-                        model = RandomForestClassifier(criterion=param_value)
-                elif isinstance(self.model, SVM):
-                    if param_name == 'C':
-                        model = SVC(C=param_value)
-                    elif param_name == 'gamma':
-                        model = SVC(gamma=param_value)
-                    elif param_name == 'kernel':
-                        model = SVC(kernel=param_value)
+    def train_model(self):
+        params_grid = [{'kernel': ['rbf', 'poly', 'sigmoid'],
+                        'C': [0.001, 0.01, 0.1, 1, 10, 100],
+                        'gamma': [0.0001, 0.001, 0.01, 0.1]},
+                       {'kernel': ['linear'],
+                        'C': [0.001, 0.01, 0.1, 1],
+                        'gamma': [0.0001, 0.001]}]
+        #find the best parameter for training set
+        self.gscv = GridSearchCV(self.svc, param_grid=params_grid)
+        self.gscv.fit(x_train, y_train)
+        params = self.get_best_params()
+        # create a file name based on the model and parameters
+        filename = f"SVM_{params['kernel']}_{params['C']}_{params['gamma']}.joblib"
+        # save the model to file
+        joblib.dump(self.gscv.best_estimator_, filename)
 
-                train_score = cross_val_score(model,X_train,y_train).mean()
-                test_score=cross_val_score(model,X_test,y_test).mean()
+    def get_best_params(self):
+        #return the best parameters found by GridSearchCV
+        return self.gscv.best_params_
 
-                train_scores.append(train_score)
-                test_scores.append(test_score)
+    def get_best_score(self):
+        return self.gscv.best_score_
 
-            plt.figure()
-            
-            plt.plot(param_range,train_scores,label='Training score')
-            plt.plot(param_range,test_scores,label='Test score')
 
-            plt.xlabel(param_name)
-            plt.ylabel('Score')
-
-            plt.legend()
-
-        plt.show()
+# create an instance of the SVM class
+model_svm = SVM()
+# train the model using GridSearchCV and save it to a file
+model_svm.train_model()
+# load the best model from the file
+filename = f"SVM_{model_svm.get_best_params()['kernel']}_{model_svm.get_best_params()['C']}_{model_svm.get_best_params()['gamma']}.joblib"
+best_model = joblib.load(filename)
+# predict on the test data using the best model
+y_pred_svm = best_model.predict(X_test)
+y_preds['svm'] = y_pred_svm
