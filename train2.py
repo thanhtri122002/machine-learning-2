@@ -4,8 +4,6 @@ import cv2
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
-from sklearn.manifold import TSNE
-from sklearn.decomposition import TruncatedSVD
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, confusion_matrix, f1_score, plot_confusion_matrix, recall_score, precision_score, accuracy_score
 from keras.utils import to_categorical
@@ -53,20 +51,6 @@ class Preprocessing:
         self.x_train /= 255
         self.x_test /= 255
         return self.x_train,  self.x_test
-    def use_TSNE(self):
-        tsvd = TruncatedSVD(n_components=50)
-
-        # Transform the training and test data using TSVD
-        X_train_tsvd = tsvd.fit_transform(self.x_train)
-        X_test_tsvd = tsvd.transform(self.x_test)
-
-       
-        tsne = TSNE()
-
-        # Transform the training and test data using t-SNE on top of TSVD 
-        X_train_tsne = tsne.fit_transform(X_train_tsvd)
-        X_test_tsne = tsne.transform(X_test_tsvd)
-        return X_train_tsne , X_test_tsne
 
 
 class SVM:
@@ -155,25 +139,32 @@ class KNN:
 
 
 class DecisionTree:
-    def __init__(self, max_depth , criterion):
-        # Initialize the model with optional parameters
-        self.model = DecisionTreeClassifier(max_depth=max_depth)
+    def __init__(self) -> None:
+        self.dt = DecisionTreeClassifier()
+        self.gscv = None
 
-    def fit(self, X_train, y_train):
-        # Train the model on the training data
-        self.model.fit(X_train, y_train)
+    def train_model(self):
+        params_grid = {
+            'criterion': ['gini', 'entropy'],
+            'max_depth': [4, 5, 6, 7, 8, 9, 10],
+            'splitter': ['best', 'random'],
+            'min_samples_split': [2, 3, 4]
+        }
+        self.gscv = GridSearchCV(
+            estimator=self.dt, param_grid=params_grid)
 
-    def predict(self, X_test):
-        # Predict the labels for the test data
-        return self.model.predict(X_test)
+        self.gscv.fit(x_train, y_train)
+        params = self.get_best_params()
+        #create a file name based on the model and parameters
+        filename = f"DTree_{params['criterion']}_{params['splitter']}_{params['max_depth']}.joblib"
+        #save the model to file
+        joblib.dump(self.gscv.best_estimator_, filename)
 
-    def save(self, filename):
-        # Save the model to a .joblib file
-        joblib.dump(self.model, filename)
+    def get_best_params(self):
+        return self.gscv.best_params_
 
-    def load(self, filename):
-        # Load the model from a .joblib file
-        self.model = joblib.load(filename)
+    def get_best_score(self):
+        return self.gscv.best_score_
 
 
 class AlexNet:
@@ -235,6 +226,19 @@ class AlexNet:
         #train the model
         train = model.fit(x_train, y_train, epochs=20, validation_data=(
             x_test, y_test), callbacks=callbacks)
+
+class LeNet:
+    def __init__(self, HEIGHT, WIDTH, n_outputs):
+        self.HEIGHT = HEIGHT
+        self.WIDTH = WIDTH
+        self.n_outputs = n_outputs
+
+    def define_model(self):
+        input = Input(shape=(self.HEIGHT, self.WIDTH, 1))
+        x = Conv2D(20, (5, 5), padding="same")(input)
+        x = Activation("relu")(x)
+        x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2))(x)
+        pass
 
 
 class Evaluate:
@@ -319,24 +323,46 @@ if __name__ == "__main__":
     x_train, x_test = preprocessing.normalization()
     y_preds = {}
     while True:
-        print("1.Train and save model Decision Tree")
+        print("1.Train and save models")
         choice = int(input("choose your choice: "))
         if choice == 1:
-            x_train , x_test = preprocessing.use_TSNE()
-            dt = DecisionTree(max_depth=3)
+            model_rf = Random_Forest()
+            model_rf.train_model()
+            # load the best model from the file
+            filename_rf = f"RandomForest_{model_rf.get_best_params()['n_estimators']}_{model_rf.get_best_params()['max_depth']}_{model_rf.get_best_params()['min_samples_split']}_{model_rf.get_best_params()['min_samples_leaf']}.joblib"
+            trained_rf = joblib.load(filename_rf)
+            # predict on the test data using the best model
+            y_pred_rf = trained_rf.predict(x_test)
+            y_preds['random-forest'] = y_pred_rf
 
-            # Fit the model on the transformed training data
-            dt.fit(x_train, y_train)
+            model_knn = KNN()
+            # train the model using GridSearchCV and save it to a file
+            model_knn.train_model()
+            # load the best model from the file
+            filename_knn = f"KNN_{model_knn.get_best_params()['n_neighbors']}_{model_knn.get_best_params()['weights']}_{model_knn.get_best_params()['metric']}.joblib"
+            trained_knn = joblib.load(filename_knn)
+            # predict on the test data using the best model
+            y_pred_knn = trained_knn.predict(x_test)
+            y_preds['k-nearest-neighbors'] = y_pred_knn
 
-            # Save the model to dt.joblib file
-            dt.save("dt.joblib")
+            model_dt = DecisionTree()
+            # train the model using GridSearchCV and save it to a file
+            model_dt.train_model()
+            # load the best model from the file
+            filename_dt = f"DTree_{model_dt.get_best_params()['criterion']}_{model_dt.get_best_params()['splitter']}_{model_dt.get_best_params()['max_depth']}.joblib"
+            trained_dt = joblib.load(filename_dt)
+            # predict on the test data using the best model
+            y_pred_dt = trained_dt.predict(x_test)
+            y_preds['decision-tree'] = y_pred_dt
 
-            # Load the model from dt.joblib file
-            dt.load("dt.joblib")
-
-            # Predict the labels for the transformed test data
-            y_pred = dt.predict(x_test)
-            print(accuracy_score(y_test,y_pred))
+            model_svm = SVM()
+            # train the model using GridSearchCV and save it to a file
+            model_svm.train_model()
+            filename_svm = f"SVM_{model_svm.get_best_params()['kernel']}_{model_svm.get_best_params()['C']}_{model_svm.get_best_params()['gamma']}.joblib"
+            trained_svm = joblib.load(filename_svm)
+            # predict on the test data using the best model
+            y_pred_svm = trained_svm.predict(x_test)
+            y_preds['svm'] = y_pred_svm
         if choice == 2:
             x_train = x_train.reshape(x_train.shape[0], HEIGHT, WIDTH, 1)
             x_test = x_test.reshape(x_test.shape[0], HEIGHT, WIDTH, 1)
@@ -347,12 +373,99 @@ if __name__ == "__main__":
             y_train = to_categorical(y_train, no_classes)
             y_test = to_categorical(y_test, no_classes)
 
-            """model = AlexNet(HEIGHT=HEIGHT, WIDTH=WIDTH, n_outputs=no_classes)
-            model.train_model(x_train, y_train, x_test, y_test)"""
-            model_alexnet = load_model("alexnet_model_mnist.h5")
+            model = AlexNet(HEIGHT=HEIGHT, WIDTH=WIDTH, n_outputs=no_classes)
+            model.train_model(x_train, y_train, x_test, y_test)
+            model_alexnet = load_model('alexnet_model_mnist.h5')
             y_pred = model_alexnet.predict(x_test)
-            y_pred = np.argmax(y_pred, axis = 1)
-            y_test = np.argmax(y_test, axis = 1)
-            print(accuracy_score(y_test,y_pred))
+            accuracy = accuracy_score(y_test, y_pred)
+            print(accuracy)
+        if choice == 3:
+            x_train = x_train.reshape(x_train.shape[0], HEIGHT, WIDTH, 1)
+            x_test = x_test.reshape(x_test.shape[0], HEIGHT, WIDTH, 1)
+
+            uniques_values, counts = np.unique(y_train, return_counts=True)
+            no_classes = len(uniques_values)
+
+            y_train = to_categorical(y_train, no_classes)
+            y_test = to_categorical(y_test, no_classes)
         else:
             break
+
+
+"""
+from sklearn.model_selection import cross_val_score
+import matplotlib.pyplot as plt
+
+# SVM
+svm_param_grid = {'C': [0.1, 1, 10], 'gamma': [1, 0.1, 0.01], 'kernel': ['rbf', 'linear']}
+svm_scores = []
+
+for params in ParameterGrid(svm_param_grid):
+    svm = SVC(**params)
+    scores = cross_val_score(svm, x_train,y_train,cv=5)
+    svm_scores.append(scores.mean())
+
+plt.plot(svm_scores,label='SVM')
+
+# Random Forest
+rf_param_grid = {'n_estimators': [10, 50, 100], 'criterion': ['gini', 'entropy']}
+rf_scores = []
+
+for params in ParameterGrid(rf_param_grid):
+    rf = RandomForestClassifier(**params)
+    scores = cross_val_score(rf,x_train,y_train,cv=5)
+    rf_scores.append(scores.mean())
+
+plt.plot(rf_scores,label='Random Forest')
+
+plt.xlabel('Parameter Set')
+plt.ylabel('Cross-Validated Accuracy')
+plt.legend()
+plt.show()
+
+param_grid = {'C': [0.1, 1, 10], 'gamma': [1, 0.1, 0.01], 'kernel': ['rbf', 'linear']}
+        grid = GridSearchCV(SVC(), param_grid)
+        grid.fit(x_train, y_train)
+        print(grid.best_params_)
+        best_param = grid.best_params_
+        param_c = best_param['C']
+        param_gamma = best_param['gamma']
+        param_kernel = best_param['kernel']
+        svm = SVC(**grid.best_params_ )
+        svm.fit(x_train,y_train)
+        joblib.dump(svm, f"my_svm_{param_c}_{param_gamma}_{param_kernel}.joblib")
+
+
+        svm_param_grid = {'C': [1, 10], 'gamma': [1,0.01]}
+        kernel = ['rbf', 'linear']
+        svm_collection = []
+        for params in ParameterGrid(svm_param_grid):
+            svm = SVC(**params)
+            svm.fit(x_train,y_train)
+            filename = f"svm_{params['C']}_{params['gamma']}_{params['kernel']}.joblib"
+            #add name of each model into the list
+            svm_collection.append(filename)
+            joblib.dump(svm,filename)
+        return svm_collection
+
+        svm_collection = self.train_model()
+        y_pred_list = []
+        for filename in svm_collection:
+            model= joblib.load(filename= filename)
+            y_pred = model.predict(x_test)
+            y_pred_list.append(y_pred)
+        return y_pred_list
+
+
+        param_grid = {'n_estimators': [
+            10, 50, 100], 'criterion': ['gini', 'entropy']}
+        grid = GridSearchCV(RandomForestClassifier(), param_grid)
+        print(grid.best_params_)
+        grid.fit(x_train, y_train)
+        best_param = grid.best_params_
+        param_n_estimators = best_param['n_estimators']
+        param_criterion = best_param['criterion']
+        model = RandomForestClassifier(**grid.best_params_)
+        model.fit(x_train,y_train)
+        joblib.dump(model, f"my_random_forest_{param_n_estimators}_{param_criterion}.joblib")
+"""
