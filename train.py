@@ -265,7 +265,7 @@ if __name__ == "__main__":
         choice = int(input("choose your choice: "))
         if choice == 1:
             
-            dt = DecisionTree(max_depth=3)
+            dt = DecisionTree()
 
             # Fit the model on the transformed training data
             print('fitting model')
