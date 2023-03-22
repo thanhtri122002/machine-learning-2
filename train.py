@@ -260,8 +260,10 @@ if __name__ == "__main__":
     y_preds = {}
     while True:
         print("1.Train and save model Decision Tree")
-        print('2.Train and save model Knn')
+        print('2.Train and save model Knn ')
         print('3.Train and save model Random Forest')
+        print('4.Train and save model SVM ')
+        print('5.Train and save model Alexnet')
         choice = int(input("choose your choice: "))
         if choice == 1:
             
