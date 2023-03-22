@@ -196,7 +196,7 @@ class AlexNet:
                    name='conv4', activation='relu')(x)
         x = ZeroPadding2D(1)(x)
 
-    #fifth layer
+        #fifth layer
         x = Conv2D(filters=256, kernel_size=3, strides=1,
                    name='conv5', activation='relu')(x)
 
@@ -266,9 +266,7 @@ if __name__ == "__main__":
         print('5.Train and save model Alexnet')
         choice = int(input("choose your choice: "))
         if choice == 1:
-            
             dt = DecisionTree()
-
             # Fit the model on the transformed training data
             print('fitting model')
             dt.fit(x_train, y_train)
@@ -334,9 +332,9 @@ if __name__ == "__main__":
             y_train = to_categorical(y_train, no_classes)
             y_test = to_categorical(y_test, no_classes)
 
-            model = AlexNet(HEIGHT=HEIGHT, WIDTH=WIDTH, n_outputs=no_classes)
-            model.train_model(x_train, y_train, x_test, y_test)
-            model_alexnet = load_model("alexnet_model_mnist_2.h5")
+            """model = AlexNet(HEIGHT=HEIGHT, WIDTH=WIDTH, n_outputs=no_classes)
+            model.train_model(x_train, y_train, x_test, y_test)"""
+            model_alexnet = load_model("alexnet_model_mnist.h5")
             y_pred = model_alexnet.predict(x_test)
             y_pred = np.argmax(y_pred, axis = 1)
             y_test = np.argmax(y_test, axis = 1)
